@@ -2,7 +2,7 @@
 
 Imperative API for vanilla JS, TS, and non-React frameworks. React wrappers live in [react.md](react.md).
 
-> **Version note:** this reference documents `@reactor-team/js-sdk` **3.0.0** (built on `reactor-wasm`, wasm-bindgen over `reactor-core`) — a major, non-backward-compatible rewrite of the 2.x line (built directly on `RTCPeerConnection`). **3.0.0 is not published to npm yet.** `npm install @reactor-team/js-sdk` currently installs a 2.x release. Check the installed `package.json` version before assuming this reference applies — if it's `<3.0.0`, the method names below are mostly right but `sendCommand()`'s return value and the entire error-handling section are wrong for that install. Once 3.0.0 ships, this note goes away.
+This reference documents `@reactor-team/js-sdk` **3.0.0** (built on `reactor-wasm`, wasm-bindgen over `reactor-core`) — a major, non-backward-compatible rewrite of the 2.x line (built directly on `RTCPeerConnection`).
 
 ## Install
 

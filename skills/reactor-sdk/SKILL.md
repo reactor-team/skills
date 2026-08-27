@@ -8,8 +8,8 @@ description: Build real-time video AI applications with Reactor SDKs. Use when c
 Reactor streams real-time video from GPU-hosted AI models to web and mobile frontends over WebRTC. Clients authenticate with JWTs, connect to a named model, send commands to control generation, and receive video tracks (JS/React) or NumPy frames (Python).
 
 **SDKs:**
-- JavaScript / TypeScript: `@reactor-team/js-sdk` (npm / pnpm) — this skill documents **3.0.0**, a wasm-bindgen rewrite over `reactor-core` that is a major, non-backward-compatible bump from the 2.x line (built directly on `RTCPeerConnection`). **3.0.0 is not published to npm yet** — `npm install` currently gets a 2.x release. Check the installed `package.json` version before trusting method names/return types from this skill; if it's `<3.0.0`, only the connection-lifecycle basics still apply.
-- Python: `reactor-sdk` (pip) — currently **1.1.1**, published on PyPI, no gating caveat. This is a full rewrite from any older generation: a `ctypes` wrapper over a native library, zero runtime Python dependencies.
+- JavaScript / TypeScript: `@reactor-team/js-sdk` (npm / pnpm) — currently **3.0.0**, a wasm-bindgen rewrite over `reactor-core` that is a major, non-backward-compatible bump from the 2.x line (built directly on `RTCPeerConnection`).
+- Python: `reactor-sdk` (pip) — currently **1.1.1**. This is a full rewrite from any older generation: a `ctypes` wrapper over a native library, zero runtime Python dependencies.
 
 **API key format:** `rk_...` — never commit or expose in client bundles.
 

@@ -2,7 +2,7 @@
 
 Declarative React bindings built on top of `@reactor-team/js-sdk`. For imperative JS usage see [javascript.md](javascript.md).
 
-> **Version note:** this reference documents `@reactor-team/js-sdk` **3.0.0**, which is **not published to npm yet** (npm currently serves a 2.x release). Check the installed version before relying on this doc — see the note at the top of [javascript.md](javascript.md) for what differs.
+This reference documents `@reactor-team/js-sdk` **3.0.0** — see [javascript.md](javascript.md) for what's new versus the 2.x line.
 
 ## Install
 
