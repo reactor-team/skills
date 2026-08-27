@@ -39,18 +39,32 @@ Each model page lists:
 - Accepted commands (name, parameters, types)
 - Messages the model emits
 - Declared input tracks (client `publishTrack` / `publish_track` target)
-- Declared output tracks (client `receive` side — read via `tracks[name]` in JS, `get_remote_tracks()` in Python)
+- Declared output tracks (client `receive` side — read via `tracks[name]` in JS, `reactor.tracks` / `reactor.track(name)` in Python)
 
 Fetch the model page before writing a new integration. Command surfaces drift — do not assume commands from prior integrations still apply.
 
 ## Currently shipping
 
-- **Helios** — interactive long-form real-time video generation with autoregressive chunked diffusion and image-to-video support. Model name: `"helios"`. See the `helios-prompts` skill for prompt-authoring rules.
-- **LingBot** — interactive, navigable video worlds driven by a seed image, WASD/arrow-key controls, and live text prompts. Model name: `"lingbot"`. See the `lingbot-world` skill for world-authoring rules.
-- **SANA-Streaming** — real-time video-to-video editing (restyle, swap, remove, overlay) on a live input stream. Model name: `"sana-streaming"`. See the `sana-streaming-prompts` skill for instruction-authoring rules.
-- **LongLive** — long-form streaming video generation. Model name: `"longlive-v2"`.
+- **Helios** — interactive real-time video generation with autoregressive chunked diffusion and image-to-video support. Model slug: `helios`. See the `helios-prompts` skill for prompt-authoring rules.
+- **LingBot** — real-time navigable video model with WASD movement, look controls, and live prompt steering. Model slug: `lingbot`. See the `lingbot-world` skill for world-authoring rules.
+- **LingBot World 2** — image-anchored navigable environments with two-axis WASD driving, directed camera control, and live prompt steering. Model slug: `lingbot-world-2`. See the `lingbot-world-2-prompts` skill.
+- **SANA-Streaming** — real-time streaming video editing: surgical text-driven edits to uploaded clips or a live webcam feed. Model slug: `sana-streaming`. See the `sana-streaming-prompts` skill for instruction-authoring rules.
+- **HappyOyster** — permanent explorable worlds built from a prompt: play with held controls or direct with text instructions. Model slug: `happy-oyster`.
+- **X2** — video transformation with character, clothing, style, and trajectory control via reference guidance. Model slug: `x2`.
+- **LongLive-2.0** — autoregressive multi-shot video direction, soft transitions and hard cuts, live or on schedule. Model slug: `longlive-v2`.
+- **LTX** — see its own docs page for current details; too new for this skill to have specifics verified yet.
 
-Additional models ship regularly. Check `https://docs.reactor.inc/model-api-reference/overview` for the current roster before writing code against anything else.
+Model slugs drift and new models ship regularly — **always take the slug from the model's own docs page**, not from this list or from a prior integration. Check `https://docs.reactor.inc/model-api-reference/overview` for the current roster before writing code against anything else.
+
+## Scaffolding a new app
+
+`npx create-reactor-app my-app --model=<slug>` scaffolds a starter project wired to a specific model. Faster than hand-assembling provider/hooks boilerplate for a new integration — reach for it before writing a app from scratch.
+
+## Typed per-model SDKs
+
+Beyond the base `@reactor-team/js-sdk` (untyped commands/messages — you pass plain objects and verify shapes against the docs yourself), TypeScript also gets **typed, per-model** packages published as `@reactor-models/<model>`, generated from the model's schema. These give you compile-time checked command params and message types instead of the base SDK's `Record<string, unknown>`-shaped `sendCommand`/`message`. Python has no equivalent — it stays on the base `reactor-sdk` package regardless of model.
+
+Use a typed package when working with one specific, known model long-term; use the base SDK (per [javascript.md](javascript.md) / [python.md](python.md)) for anything generic, exploratory, or multi-model.
 
 ## Track naming contract
 

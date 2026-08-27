@@ -92,25 +92,30 @@ await reactor.connect(jwt);
 
 ### Token refresh
 
-Tokens expire after 6 hours. For sessions approaching that limit, re-fetch `/api/token` and reconnect before the JWT expires, or in response to an `AUTHENTICATION_FAILED`-class error (dispatch on `error.recoverable` — see [javascript.md](javascript.md)).
+Tokens expire after 6 hours. For sessions approaching that limit, re-fetch `/api/token` and reconnect before the JWT expires, or in response to an `UnauthorizedError` (dispatch on `error instanceof UnauthorizedError` — see [javascript.md](javascript.md#error-handling); in 3.0.0 this is a real class, not a `component`/`code` pair to string-match).
 
 ## Python
 
-Pass the API key directly to the `Reactor` constructor; the SDK exchanges it for a JWT internally on `connect()`:
+Pass the API key as the constructor's second positional argument; the SDK exchanges it for a JWT internally on `connect()`:
 
 ```python
 import os
 from reactor_sdk import Reactor
 
-reactor = Reactor(
-    model_name="helios",
-    api_key=os.environ["REACTOR_API_KEY"],
-)
+reactor = Reactor("helios", os.environ["REACTOR_API_KEY"])
 
 await reactor.connect()
 ```
 
 Python runs server-side, so there is no browser exposure to worry about. Just keep the key in a secret manager or env var — never in source.
+
+Alternatively, pass a JWT directly via the keyword-only `jwt=` argument (e.g. if some other part of your system already mints tokens) — it wins over `api_key` and the SDK never re-mints it:
+
+```python
+reactor = Reactor("helios", jwt=some_existing_jwt)
+```
+
+If the exchange itself fails (bad key, unreachable auth host, malformed response), the SDK raises `AuthError` — a plain `RuntimeError`, not a `ReactorError` — around `connect()`. Catch it separately from `ReactorError`/`@on_error`.
 
 ## Env var conventions
 
@@ -123,7 +128,7 @@ Python runs server-side, so there is no browser exposure to worry about. Just ke
 
 ## Common failure modes
 
-- **401 / `AUTHENTICATION_FAILED` on connect** — JWT expired, malformed, or the API key is invalid. Verify the key starts with `rk_` and that the `/tokens` call returned 200.
+- **`UnauthorizedError` on connect** (JS) / **`UnauthorizedError`** (Python) — JWT expired, malformed, or the API key is invalid. Verify the key starts with `rk_` and that the `/tokens` call returned 200. In Python, a failed API-key-to-JWT exchange itself raises `AuthError` instead — a separate, non-`ReactorError` exception (see [python.md](python.md#error-handling)).
 - **Works locally, fails in prod** — API key was bundled into the client via a `NEXT_PUBLIC_*` / `VITE_*` var. Move minting to a server route.
 - **Intermittent auth failures on long sessions** — JWT hitting its 6-hour TTL. Add a refresh before expiry or on recoverable errors.
 - **403 on your own `/api/token` route** — your server isn't authenticating the user before proxying; add auth in front of the mint call.
