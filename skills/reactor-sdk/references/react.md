@@ -2,13 +2,15 @@
 
 Declarative React bindings built on top of `@reactor-team/js-sdk`. For imperative JS usage see [javascript.md](javascript.md).
 
+This reference documents `@reactor-team/js-sdk` **3.0.0** — see [javascript.md](javascript.md) for what's new versus the 2.x line.
+
 ## Install
 
 ```bash
-npm install @reactor-team/js-sdk
+npm install @reactor-team/js-sdk react react-dom
 ```
 
-React hooks and components ship from the same top-level package — there is no `/react` subpath.
+`react` is a **peer dependency** (`^18.0.0 || ^19.0.0`) — install it yourself. React hooks and components ship from the same top-level package; there is no `/react` subpath.
 
 ## Provider setup
 
@@ -30,9 +32,11 @@ export function App({ jwtToken }: { jwtToken: string }) {
 }
 ```
 
-Fetch the JWT in a parent component (or via data-fetching library) and pass it in. Hooks below must be used inside a `ReactorProvider`.
+`ReactorProviderProps`: `apiUrl?`, `modelName` (required), `local?`, `modelTracks?` (`TrackCapability[]`, matches the vanilla `Reactor` constructor), `jwtToken?` (`JwtSource` — string or a `() => string | Promise<string>` resolver), `connectOptions?` (`ConnectOptions & { autoConnect?: boolean }`, default `autoConnect: false`).
 
-`connectOptions` accepts `autoConnect?: boolean` (default `false`) plus `maxAttempts?: number` (SDP polling attempts, default 6).
+**Every one of those props is live.** Changing `apiUrl`/`modelName`/`local`/`modelTracks`/`jwtToken`/`connectOptions` tears down the current `Reactor` instance (`disconnect()` then dispose) and builds a fresh one — there's no in-place reconnect on a prop change. `modelTracks` and `connectOptions` are compared by value (`JSON.stringify`), so an inline object literal is fine and won't cause spurious rebuilds by itself — but a `jwtToken` resolver function recreated on every render (an inline arrow function, for instance) is compared by reference and **will** cause repeated rebuilds. Hoist it or wrap in `useCallback`.
+
+Hooks below must be used inside a `ReactorProvider`.
 
 ## Hooks
 
@@ -47,7 +51,7 @@ import {
 
 ### `useReactor(selector)`
 
-Generic selector over the store state. Destructure the fields you need — the store is flat:
+Shallow-equality-checked selector over the store state. Destructure the fields you need:
 
 ```tsx
 function StatusBanner() {
@@ -56,29 +60,38 @@ function StatusBanner() {
 }
 ```
 
-Store fields (state):
+Store state fields:
 
 | Field | Type |
 |---|---|
 | `status` | `"disconnected" \| "connecting" \| "waiting" \| "ready"` |
-| `tracks` | `Record<string, MediaStreamTrack>` — model-emitted tracks keyed by name |
-| `lastError` | `ReactorError \| undefined` |
 | `sessionId` | `string \| undefined` |
-| `sessionExpiration` | `number \| undefined` |
+| `lastError` | `ReactorError \| undefined` — see [javascript.md](javascript.md#error-handling) for the class hierarchy |
+| `lastMessage` | `ReactorMessage \| undefined` — most recent **application-scope** `message` only; `runtimeMessage` is not mirrored here |
+| `tracks` | `Record<string, MediaStreamTrack>` — model-emitted tracks keyed by name; reset to `{}` on `"disconnected"` |
+| `jwtToken` | `JwtSource \| undefined` — the value the provider was created with; not resynced on prop change beyond a rebuild |
+| `connectOptions` | `ConnectOptions \| undefined` — the default options set at store creation |
 
-Store fields (actions):
+Store action fields:
 
 | Field | Signature |
 |---|---|
 | `connect` | `(jwt?, options?: ConnectOptions) => Promise<void>` |
 | `disconnect` | `(recoverable?: boolean) => Promise<void>` |
 | `reconnect` | `(options?: ConnectOptions) => Promise<void>` |
-| `sendCommand` | `(name, data, scope?: MessageScope) => Promise<void>` |
+| `sendCommand` | `(command, data?, scope?) => Promise<ReactorMessage \| undefined>` — see [javascript.md](javascript.md#reading-command-replies), **never rejects** |
 | `publish` | `(name, track: MediaStreamTrack) => Promise<void>` |
 | `unpublish` | `(name) => Promise<void>` |
+| `pauseTrack` | `(name) => Promise<void>` |
+| `resumeTrack` | `(name) => Promise<void>` |
 | `uploadFile` | `(file: File \| Blob, options?: { name?: string }) => Promise<FileRef>` |
+| `requestClip` | `(durationSeconds: number) => Promise<Clip>` |
+| `requestRecording` | `() => Promise<Clip>` |
+| `downloadClipAsFile` | `(clip, filename?, options?) => Promise<Blob>` |
 
-**Note the rename:** the store exposes `publish` / `unpublish` (not `publishTrack` / `unpublishTrack` — those names exist on the underlying `Reactor` class but hook consumers use the shorter names).
+**Note the rename:** the store exposes `publish` / `unpublish` (not `publishTrack` / `unpublishTrack` — those names exist on the underlying `Reactor` class, but hook consumers use the shorter names).
+
+Not mirrored in store state at all: schema, capabilities, stats. Reach the raw instance via `useReactor((s) => s.internal.reactor)` for those (`reactor.getSchema()`, `reactor.getCapabilities()`, `reactor.getStats()`) — or use `useStats()` below for stats specifically.
 
 ### `useReactorMessage(handler)`
 
@@ -88,7 +101,7 @@ Subscribes to model application messages. Handler is registered on mount, remove
 function FrameCounter() {
   const [frame, setFrame] = useState(0);
   useReactorMessage((msg) => {
-    if (msg.type === "state") setFrame(msg.data.current_frame);
+    if (msg.type === "state") setFrame((msg.data as { current_frame: number }).current_frame);
   });
   return <div>Frame: {frame}</div>;
 }
@@ -96,11 +109,11 @@ function FrameCounter() {
 
 ### `useReactorInternalMessage(handler)`
 
-Subscribes to platform-level (runtime) messages — capabilities exchange and other control-plane data. Advanced; most apps use `useReactorMessage` instead.
+Subscribes to platform-level (`runtimeMessage`) events — moderation, clip/recording lifecycle, and other control-plane data. Advanced; most apps use `useReactorMessage` instead.
 
 ### `useStats()`
 
-Returns the latest `ConnectionStats` (RTT, jitter, bitrate, frames/sec, connection timings). Updates every ~2s while connected; `undefined` when disconnected.
+Returns the latest `ConnectionStats` (RTT, jitter, bitrate, frames/sec, connection timings). Updates every ~2s while connected; resets to `undefined` on unmount or when the underlying `Reactor` instance is rebuilt.
 
 ## Rendering video
 
@@ -126,7 +139,7 @@ function Scene() {
 | `width`, `height` | — | Dimensions |
 | `className`, `style` | — | Standard |
 | `videoObjectFit` | `"contain"` | CSS `object-fit` |
-| `muted` | `true` | Browser autoplay policies require muted-by-default |
+| `muted` | `true` if no `audioTrack`, else `false` | Browser autoplay policies require muted-by-default |
 
 For custom rendering or multiple named tracks, read `tracks[name]` from the store directly.
 
@@ -147,11 +160,16 @@ import { ReactorProvider, WebcamStream, ReactorView } from "@reactor-team/js-sdk
 
 | Prop | Default | Purpose |
 |---|---|---|
-| `track` | **required** | Sendonly track name; must match the model's input attribute |
-| `videoConstraints` | `{ width: { ideal: 1280 }, height: { ideal: 720 } }` | `MediaTrackConstraints` for `getUserMedia` |
+| `track` | **required** | Sendonly video track name; must match the model's input attribute |
+| `audio` | `false` | `boolean` or `MediaTrackConstraints` — capture audio alongside video |
+| `audioTrack` | — | Sendonly audio track name; ignored unless `audio` is set |
+| `videoConstraints` | `{ width: { ideal: 1280 }, height: { ideal: 720 } }` | Read **once at mount** — changing it later doesn't re-request the camera |
 | `showWebcam` | `true` | Show the local preview |
 | `className`, `style` | — | Standard |
 | `videoObjectFit` | `"contain"` | CSS `object-fit` on the preview |
+| `onPermissionDenied` | — | Called if `getUserMedia` is denied |
+| `onPublished` | — | Called once the track successfully publishes |
+| `onError` | — | Called on any other capture/publish error |
 
 ## Sending commands from components
 
@@ -162,14 +180,15 @@ function PromptBox() {
   const onSubmit = async (text: string) => {
     if (status !== "ready") return;
     // Command arg shapes are model-specific — verify against docs.reactor.inc/model-api-reference/<model>/schema
-    await sendCommand("set_prompt", { prompt: text });
+    const reply = await sendCommand("set_prompt", { prompt: text });
+    // reply is `ReactorMessage | undefined` — most setter-style commands reply with nothing
   };
 
   return <input disabled={status !== "ready"} onChange={(e) => onSubmit(e.target.value)} />;
 }
 ```
 
-Always gate sends on `status === "ready"`, or disable the control until ready — otherwise the call is rejected.
+Always gate sends on `status === "ready"`, or disable the control until ready — otherwise the call resolves with `undefined` and does nothing (`sendCommand` never throws — see [javascript.md](javascript.md#reading-command-replies)).
 
 ## File uploads
 
@@ -187,7 +206,41 @@ function ImagePicker() {
 }
 ```
 
-`FileRef` values can be mixed with scalar args in the same command payload, and multiple files can be passed in one command.
+`FileRef` values can be mixed with scalar args in the same command payload, and multiple files can be passed in one command — but only top-level values in the payload are detected.
+
+## Recording and clips
+
+New in 3.0.0 — no 2.x equivalent, and no old-docs analogue at all.
+
+```tsx
+import { useReactor, ClipPlayer, ClipDownloadButton } from "@reactor-team/js-sdk";
+
+function ClipControls() {
+  const { requestClip, status } = useReactor((s) => s);
+  const [clip, setClip] = useState<Clip>();
+
+  return (
+    <>
+      <button
+        disabled={status !== "ready"}
+        onClick={async () => setClip(await requestClip(5))}
+      >
+        Save last 5s
+      </button>
+      {clip && (
+        <>
+          <ClipPlayer clip={clip} />
+          <ClipDownloadButton clip={clip}>Download</ClipDownloadButton>
+        </>
+      )}
+    </>
+  );
+}
+```
+
+- **`ClipPlayer`** — plays a `Clip` via `hls.js` (dynamically imported) wherever MSE exists, including iOS Safari 17.1+; falls back to assembling a flat MP4 in memory on older iOS. Doesn't require a `ReactorProvider` in its tree — pass `getJwt` explicitly outside one, or let it inherit the provider's JWT resolver inside one. Props: `clip` (required), `getJwt?`, `slackMs?` (bounded manifest wait), `autoPlay?` (default `true`), `muted?` (default `true`), `className?`, `style?`, `onError?`.
+- **`ClipDownloadButton`** — wraps `useClipDownload`. Props: `clip` (required), `getJwt?`, `filename?` (default `"reactor-clip.mp4"`), `children?` (node or a render function taking `ClipDownloadState`), `className?`, `style?`, `disabled?`, `onSuccess?`, `onError?`.
+- **`useClipDownload(clip, options?)`** → `{ state, download, reset }`. `state` is `{ kind: "idle" } | { kind: "downloading"; fetched; total } | { kind: "error"; message }`. `download()` never rejects — errors surface via `state`, not a thrown error.
 
 ## Error handling and automatic reconnect
 
@@ -202,25 +255,20 @@ function ErrorBanner() {
   );
 }
 
-function ReconnectOnRecoverable() {
-  const { reconnect } = useReactor((s) => s);
+function useReconnectOnRecoverable() {
+  const lastError = useReactor((s) => s.lastError);
+  const reconnect = useReactor((s) => s.reconnect);
 
   useEffect(() => {
-    const handler = (error: ReactorError) => {
-      if (error.recoverable) {
-        setTimeout(() => reconnect(), (error.retryAfter ?? 3) * 1000);
-      }
-    };
-    // Access the underlying Reactor via the store for direct event subscription.
-    // Most apps can just watch `lastError` from useReactor instead.
-    // ...
-  }, [reconnect]);
-
-  return null;
+    if (lastError?.recoverable) {
+      const t = setTimeout(() => reconnect(), (lastError.retryAfter ?? 3) * 1000);
+      return () => clearTimeout(t);
+    }
+  }, [lastError, reconnect]);
 }
 ```
 
-Dispatch on `lastError.recoverable` and `lastError.retryAfter` rather than matching specific error code strings.
+`ReactorError` is a real class hierarchy in 3.0.0 (`UnauthorizedError`, `RateLimitedError`, `ConflictError`, ...), not a flat interface — see [javascript.md](javascript.md#error-handling) for the full list. Prefer `instanceof` over matching `lastError.code` strings where you can.
 
 ## Manual connection control
 
@@ -253,9 +301,12 @@ await reconnect();
 
 ## Other exports
 
-- `ReactorController` — a prebuilt connect/disconnect UI component; useful for demos and internal tools.
-- `AbortError`, `isAbortError` — for distinguishing user-initiated cancellations from errors.
-- `DEFAULT_BASE_URL` — the coordinator URL default (`https://api.reactor.inc`).
+- `useReactor`'s `internal.reactor` — direct access to the underlying `Reactor` instance for anything not mirrored into store state (schema, capabilities, raw event subscriptions).
+- `DEFAULT_PLAYLIST_POLL_SLACK_MS`, `downloadClipAsFile`, `fetchPlaylist`, `parsePlaylist` — the standalone recording module, usable with no provider/instance at all (same exports as [javascript.md](javascript.md#recording-and-clips)).
+- `FileRef`, `isFileRef` — re-exported from the base package.
+- `normalizeJwtSource` — re-exported from the base package.
+
+Not re-exported from the top-level package (internal/advanced): `useReactorStore` and `ReactorContext` from the provider module.
 
 ## Cleanup
 
